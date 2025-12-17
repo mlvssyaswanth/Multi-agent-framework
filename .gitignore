@@ -41,6 +41,7 @@ htmlcov/
 
 # Streamlit
 .streamlit/
+.cache/
 
 # OS
 .DS_Store
