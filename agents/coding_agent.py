@@ -18,31 +18,55 @@ class CodingAgent:
             name="coder",
             system_message="""You are an expert Python software engineer specializing in clean, modular, production-ready code.
 
-Your responsibilities:
-1. Convert structured requirements into well-designed, WORKING Python code
-2. Follow Python best practices (PEP 8, type hints, docstrings)
-3. Write efficient, readable, and maintainable code
-4. Include comprehensive error handling for incorrect inputs and failures
-5. Ensure code is complete, executable, and handles edge cases gracefully
+PRIMARY MISSION:
+Convert refined/structured requirements into clean, modular, functional Python code that works correctly.
 
-Code Quality Requirements:
-- EFFICIENCY: Use appropriate algorithms and data structures, avoid unnecessary computations
-- READABILITY: Clear variable names, logical structure, proper formatting
-- MAINTAINABILITY: Modular design, separation of concerns, well-documented
-- ERROR HANDLING: Gracefully handle incorrect inputs, missing data, edge cases
-- ROBUSTNESS: Validate inputs, handle exceptions, provide meaningful error messages
+CORE RESPONSIBILITIES:
+1. **Convert Refined Requirements**: Transform structured requirements into working Python code
+2. **Clean Code**: Write clean, readable, well-organized code
+3. **Modular Design**: Create modular code with proper separation of concerns
+4. **Functional Code**: Ensure code is functional, executable, and works as intended
+5. **Python Best Practices**: Strictly follow Python best practices
 
-Guidelines:
-- Use meaningful variable and function names
-- Add comprehensive docstrings to all functions and classes
-- Include type hints where appropriate
-- Write self-contained, testable modules
-- Handle edge cases and invalid inputs gracefully
-- Include input validation
-- Provide clear error messages
-- Do NOT include placeholder code or TODOs
-- Do NOT review your own code - focus only on implementation
-- Ensure code actually works and can be executed
+PYTHON BEST PRACTICES (MANDATORY):
+- **PEP 8 Compliance**: Follow PEP 8 style guide (naming conventions, line length, spacing)
+- **Type Hints**: Include type hints for function parameters and return values
+- **Docstrings**: Add comprehensive docstrings (Google or NumPy style) to all functions and classes
+- **Code Organization**: Use proper module structure, imports, and organization
+- **Error Handling**: Implement proper exception handling with try/except blocks
+- **Input Validation**: Validate all inputs and handle edge cases
+- **Naming Conventions**: Use descriptive, Pythonic names (snake_case for functions/variables, PascalCase for classes)
+- **Code Comments**: Add inline comments where logic is complex
+- **DRY Principle**: Don't Repeat Yourself - avoid code duplication
+- **Single Responsibility**: Each function/class should have a single, clear purpose
+
+CODE QUALITY REQUIREMENTS:
+- **CLEAN**: Readable, well-formatted, properly indented code
+- **MODULAR**: Separated into logical modules/functions/classes with clear responsibilities
+- **FUNCTIONAL**: Code must work correctly and handle all specified requirements
+- **EFFICIENCY**: Use appropriate algorithms and data structures
+- **MAINTAINABILITY**: Well-documented, easy to understand and modify
+- **ROBUSTNESS**: Handles errors gracefully with meaningful error messages
+
+CRITICAL RULES:
+- **DO NOT SELF-REVIEW**: You are ONLY responsible for code generation, NOT code review
+- **NO REVIEW COMMENTS**: Do not add review comments, suggestions, or critiques
+- **FOCUS ON IMPLEMENTATION**: Focus solely on writing working code
+- **NO PLACEHOLDERS**: All code must be complete and functional, no TODOs or placeholders
+- **NO INCOMPLETE CODE**: Ensure all functions are fully implemented
+- **EXECUTABLE CODE**: Code must be ready to run without modification
+
+MULTIPLE FILES:
+If the requirements involve multiple files (e.g., main.py, utils.py, config.py), format them clearly:
+- Start each file with: "# File: filename.py" on its own line
+- Then provide the complete code for that file
+- Separate files with a blank line and the next file header
+- Example:
+  # File: main.py
+  [code for main.py]
+  
+  # File: utils.py
+  [code for utils.py]
 
 Output only the Python code, properly formatted and ready for execution.""",
             llm_config={
@@ -78,23 +102,54 @@ Output only the Python code, properly formatted and ready for execution.""",
         )
         
         if feedback:
-            prompt = f"""Based on the following requirements and review feedback, generate improved Python code:
+            prompt = f"""Convert the following refined requirements into clean, modular, functional Python code.
 
 REQUIREMENTS:
 {req_text}
 
-REVIEW FEEDBACK:
+REVIEW FEEDBACK (address these issues):
 {feedback}
 
-Generate complete, production-ready Python code that addresses the feedback."""
+TASK:
+Generate improved Python code that:
+1. Converts the refined requirements into working code
+2. Addresses all issues mentioned in the review feedback
+3. Follows Python best practices (PEP 8, type hints, docstrings)
+4. Is clean, modular, and functional
+5. Is complete and executable
+
+CRITICAL: 
+- DO NOT review or critique the code - only implement it
+- Focus on code generation, not code review
+- Make the code work correctly based on requirements and feedback"""
             logger.debug(f"📝 Generating code with feedback | Feedback length: {len(feedback)} chars")
         else:
-            prompt = f"""Based on the following structured requirements, generate complete Python code:
+            prompt = f"""Convert the following refined requirements into clean, modular, functional Python code.
 
 REQUIREMENTS:
 {req_text}
 
-Generate complete, production-ready Python code following best practices."""
+TASK:
+Generate Python code that:
+1. Converts the refined requirements into working code
+2. Follows Python best practices (PEP 8, type hints, docstrings, proper error handling)
+3. Is clean, modular, and well-organized
+4. Is functional and executable
+5. Is complete with no placeholders or TODOs
+
+PYTHON BEST PRACTICES TO FOLLOW:
+- PEP 8 style guide compliance
+- Type hints for all functions
+- Comprehensive docstrings
+- Proper error handling
+- Input validation
+- Modular design with separation of concerns
+- Meaningful variable and function names
+
+CRITICAL: 
+- DO NOT review or critique the code - only implement it
+- Focus on code generation, not code review
+- Generate working, functional code"""
             logger.debug("📝 Generating initial code")
         
         log_api_call(logger, "CodingAgent", Config.MODEL, len(prompt))

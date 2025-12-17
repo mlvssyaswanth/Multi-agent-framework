@@ -18,30 +18,74 @@ class CodeReviewAgent:
             name="code_reviewer",
             system_message="""You are a Senior Code Reviewer with expertise in Python, software engineering best practices, security, and code quality.
 
-Your responsibilities:
-1. Review Python code for correctness, efficiency, security, and edge cases
-2. Check adherence to Python best practices (PEP 8, type hints, docstrings)
-3. Identify potential bugs, security vulnerabilities, and performance issues
-4. Ensure code handles edge cases appropriately
-5. Verify code completeness (no placeholders, TODOs, or incomplete logic)
+PRIMARY MISSION:
+Review code for correctness, efficiency, security, and edge cases. If issues are found, generate explicit improvement feedback to send back to the Coding Agent.
 
-Review Criteria:
-- Correctness: Does the code implement requirements correctly?
-- Efficiency: Are there performance issues or inefficiencies?
-- Security: Are there security vulnerabilities?
-- Edge Cases: Are edge cases handled?
+CORE RESPONSIBILITIES:
+1. **Review Code Thoroughly**: Examine code for correctness, efficiency, security, and edge cases
+2. **Generate Explicit Feedback**: If issues are found, provide clear, actionable improvement feedback
+3. **Send Code Back**: When issues are found, code must be sent back to Coding Agent for fixes
+
+MANDATORY REVIEW AREAS:
+
+1. **CORRECTNESS**:
+   - Does the code correctly implement all requirements?
+   - Are there logical errors or bugs?
+   - Does the code produce expected outputs?
+   - Are algorithms and data structures used correctly?
+   - Are calculations and operations accurate?
+
+2. **EFFICIENCY**:
+   - Are there performance bottlenecks?
+   - Are algorithms optimal for the use case?
+   - Are there unnecessary computations or loops?
+   - Is memory usage reasonable?
+   - Are data structures chosen appropriately?
+   - Are there opportunities for optimization?
+
+3. **SECURITY**:
+   - Are there security vulnerabilities (SQL injection, XSS, etc.)?
+   - Is input validation and sanitization proper?
+   - Are sensitive data handled securely?
+   - Are authentication/authorization checks in place if needed?
+   - Are file operations secure?
+   - Are there potential code injection risks?
+   - Is error handling secure (no information leakage)?
+
+4. **EDGE CASES**:
+   - Are null/None values handled?
+   - Are empty inputs handled?
+   - Are boundary conditions tested?
+   - Are error conditions handled gracefully?
+   - Are edge cases in algorithms covered?
+   - Are division by zero, index out of bounds, etc. handled?
+
+ADDITIONAL REVIEW CRITERIA:
 - Code Quality: Is the code clean, readable, and maintainable?
-- Completeness: Is the code complete with no placeholders?
+- Completeness: Is the code complete with no placeholders, TODOs, or incomplete logic?
+- Best Practices: Does it follow Python best practices (PEP 8, type hints, docstrings)?
 
-Approval Guidelines:
-- APPROVE code if it correctly implements the core requirements, even if minor improvements are possible
-- APPROVE code if it's functional, complete, and follows best practices reasonably well
-- Only request changes for significant issues, bugs, or missing critical functionality
-- Be practical: code doesn't need to be perfect, just production-ready
+APPROVAL GUIDELINES:
+- **APPROVE** code ONLY if it passes all four mandatory review areas (Correctness, Efficiency, Security, Edge Cases)
+- **APPROVE** if code is correct, efficient, secure, and handles edge cases properly
+- **DO NOT APPROVE** if any significant issues are found in the four mandatory areas
+- Be thorough but practical: code should be production-ready
 
-Output Format:
-If code is APPROVED, respond with: "APPROVED" (at the start of your response)
-If code needs changes, provide specific, actionable feedback in a clear format.""",
+OUTPUT FORMAT:
+- If code is APPROVED: Respond with "APPROVED" at the start of your response
+- If issues are found: Provide explicit, detailed feedback organized by:
+  1. CORRECTNESS ISSUES: [list specific issues]
+  2. EFFICIENCY ISSUES: [list specific issues]
+  3. SECURITY ISSUES: [list specific issues]
+  4. EDGE CASE ISSUES: [list specific issues]
+  
+  For each issue, provide:
+  - What the problem is
+  - Where it occurs (line/function/class)
+  - How to fix it
+  - Why it matters
+
+The feedback must be explicit and actionable so the Coding Agent can fix the issues.""",
             llm_config={
                 "config_list": [{
                     "model": Config.MODEL,
@@ -74,7 +118,7 @@ If code needs changes, provide specific, actionable feedback in a clear format."
             {"code_length": len(code), "requirements_count": len(requirements.get("functional_requirements", []))}
         )
         
-        prompt = f"""Review the following Python code against these requirements:
+        prompt = f"""Review the following Python code for correctness, efficiency, security, and edge cases.
 
 REQUIREMENTS:
 {req_text}
@@ -84,8 +128,54 @@ CODE TO REVIEW:
 {code}
 ```
 
-Perform a thorough review. If the code is correct, complete, secure, and handles edge cases, respond with "APPROVED".
-Otherwise, provide specific, actionable feedback on what needs to be fixed."""
+MANDATORY REVIEW CHECKLIST:
+
+1. **CORRECTNESS**:
+   - Does the code correctly implement all requirements?
+   - Are there logical errors or bugs?
+   - Does the code produce expected outputs?
+   - Are algorithms and data structures used correctly?
+
+2. **EFFICIENCY**:
+   - Are there performance bottlenecks?
+   - Are algorithms optimal?
+   - Are there unnecessary computations?
+   - Is memory usage reasonable?
+
+3. **SECURITY**:
+   - Are there security vulnerabilities?
+   - Is input validation proper?
+   - Are sensitive operations secure?
+   - Is error handling secure?
+
+4. **EDGE CASES**:
+   - Are null/None values handled?
+   - Are empty inputs handled?
+   - Are boundary conditions tested?
+   - Are error conditions handled gracefully?
+
+REVIEW PROCESS:
+1. Check each of the four mandatory areas (Correctness, Efficiency, Security, Edge Cases)
+2. If ALL areas pass: Respond with "APPROVED"
+3. If ANY issues are found: Generate explicit improvement feedback organized by category
+
+FEEDBACK FORMAT (if issues found):
+Provide explicit, actionable feedback in this format:
+
+CORRECTNESS ISSUES:
+- [Issue 1]: [Description] - [Location] - [How to fix] - [Why it matters]
+- [Issue 2]: [Description] - [Location] - [How to fix] - [Why it matters]
+
+EFFICIENCY ISSUES:
+- [Issue 1]: [Description] - [Location] - [How to fix] - [Why it matters]
+
+SECURITY ISSUES:
+- [Issue 1]: [Description] - [Location] - [How to fix] - [Why it matters]
+
+EDGE CASE ISSUES:
+- [Issue 1]: [Description] - [Location] - [How to fix] - [Why it matters]
+
+The feedback must be explicit and actionable so the Coding Agent can address each issue."""
         
         log_api_call(logger, "CodeReviewAgent", Config.MODEL, len(prompt))
         
