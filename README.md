@@ -11,9 +11,7 @@ This framework implements a complete software development pipeline using multipl
 The system follows a strict pipeline architecture where agents work sequentially, with the Code Review Agent enforcing quality through iterative feedback loops.
 
 ```
-User Input → Requirement Analysis → Code Generation → Code Review (with iteration)
-    ↓
-Documentation → Test Generation → Deployment Configuration → Output
+User Input → Requirement Analysis → Code Generation → Code Review (with iteration) → Documentation → Test Generation → Deployment Configuration → Output
 ```
 
 ## 👥 Agents
