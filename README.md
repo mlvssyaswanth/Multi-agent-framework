@@ -21,66 +21,23 @@ Documentation → Test Generation → Deployment Configuration → Output
 ### 1. Requirement Analysis Agent
 **Responsibility:** Converts natural-language user input into structured software requirements.
 
-**Output:**
-- Functional requirements
-- Non-functional requirements
-- Assumptions
-- Constraints
-
 ### 2. Coding Agent
 **Responsibility:** Converts refined requirements into clean, modular Python code following best practices.
-
-**Features:**
-- PEP 8 compliance
-- Type hints
-- Comprehensive docstrings
-- Error handling
-- No placeholders or TODOs
 
 ### 3. Code Review Agent (CRITICAL)
 **Responsibility:** Reviews generated code for correctness, efficiency, security, and edge cases.
 
-**Features:**
-- Enforces quality standards
-- Provides explicit feedback
-- Controls iteration loop
-- Sends code back to Coding Agent if issues exist
-- Continues until approval
-
 ### 4. Documentation Agent
 **Responsibility:** Generates clear, structured Markdown documentation.
-
-**Includes:**
-- Overview
-- Architecture explanation
-- Module breakdown
-- Function definitions with parameters and return values
-- Usage examples
 
 ### 5. Test Case Generation Agent
 **Responsibility:** Generates executable pytest test cases.
 
-**Features:**
-- At least one functional test per module
-- Tests run without modification
-- Covers normal and edge cases
-
 ### 6. Deployment Configuration Agent
 **Responsibility:** Generates deployment files and instructions.
 
-**Output:**
-- `requirements.txt`
-- Project setup instructions
-- Run script (`run.sh`)
-
 ### 7. Streamlit UI Agent
 **Responsibility:** Provides interactive web interface for the entire workflow.
-
-**Features:**
-- Accepts user requirements
-- Triggers full agent workflow
-- Displays outputs from every agent
-- Download functionality for generated files
 
 ## 🚀 Setup Instructions
 
@@ -92,7 +49,7 @@ Documentation → Test Generation → Deployment Configuration → Output
 
 1. **Clone or navigate to the project directory:**
    ```bash
-   cd Multi-agent-system
+   cd Multi-agent-pipeline
    ```
 
 2. **Create a clean virtual environment (recommended to avoid dependency conflicts):**
@@ -131,14 +88,7 @@ Documentation → Test Generation → Deployment Configuration → Output
 
 **Option 1: Using the run script (Recommended)**
 
-- **Windows:**
   ```bash
-  run.bat
-  ```
-
-- **Linux/Mac:**
-  ```bash
-  chmod +x run.sh
   ./run.sh
   ```
 
@@ -176,24 +126,14 @@ operation as input.
 
 ## 🧪 Testing
 
-Run the test suite using pytest:
+The framework generates test cases for the code it creates. These test cases are included in the output and can be executed using pytest.
 
-```bash
-pytest tests/
-```
+**To run the generated test cases:**
+1. Save the generated code to a file (e.g., `generated_code.py`)
+2. Save the generated test cases to `test_generated_code.py`
+3. Run: `pytest test_generated_code.py -v`
 
-Run with verbose output:
-
-```bash
-pytest tests/ -v
-```
-
-Run specific test file:
-
-```bash
-pytest tests/test_orchestrator.py
-pytest tests/test_agents.py
-```
+The generated test cases include expected execution results in comments, showing what each test should produce when executed.
 
 ## 📁 Project Structure
 
@@ -209,11 +149,8 @@ Multi-agent-system/
 │   └── deployment_agent.py       # Deployment Configuration Agent
 ├── utils/
 │   ├── __init__.py
-│   └── config.py                  # Configuration management
-├── tests/
-│   ├── __init__.py
-│   ├── test_orchestrator.py       # Orchestrator tests
-│   └── test_agents.py             # Agent tests
+│   ├── config.py                  # Configuration management
+│   └── logger.py                  # Enhanced logging utilities
 ├── orchestrator.py                # Central pipeline orchestrator
 ├── app.py                         # Streamlit UI application
 ├── requirements.txt               # Python dependencies
@@ -280,45 +217,6 @@ Streamlit UI → Display All Outputs
 - **Iterations:** The system will iterate up to 5 times to get code approval
 - **Costs:** Be aware of OpenAI API usage costs when running the framework
 
-## 🐛 Troubleshooting
-
-### Issue: "OPENAI_API_KEY not found"
-**Solution:** Ensure you have created a `.env` file with your API key
-
-### Issue: Import errors
-**Solution:** Make sure all dependencies are installed: `pip install -r requirements.txt`
-
-### Issue: Streamlit not starting
-**Solution:** Check that Streamlit is installed and your virtual environment is activated
-
-### Issue: Code generation fails
-**Solution:** Check your OpenAI API key is valid and you have sufficient credits
-
-### Issue: Dependency conflicts (mcp, mistralai, etc.)
-**Solution:** These packages are NOT used by this project. The conflicts occur when other packages are installed in the same environment. To resolve:
-1. **Use a clean virtual environment** (recommended):
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # or venv\Scripts\activate on Windows
-   pip install -r requirements.txt
-   ```
-2. If you must use a shared environment, the conflicts won't affect this project since we don't use those packages. However, a clean virtual environment is strongly recommended.
-
-## 📝 Code Quality Standards
-
-The framework enforces:
-- ✅ No placeholders
-- ✅ No TODOs
-- ✅ No incomplete logic
-- ✅ No syntax errors
-- ✅ Modular and readable code
-- ✅ Proper comments where needed
-- ✅ Production-ready output
-
-## 🤝 Contributing
-
-This is a complete, production-ready implementation. All agents are fully functional and the system runs end-to-end.
-
 ## 📄 License
 
 This project is provided as-is for educational and development purposes.
@@ -332,8 +230,3 @@ Built using:
 - [pytest](https://pytest.org/) - Testing framework
 
 ---
-
-**Status:** ✅ Production Ready
-**Version:** 1.0.0
-
-# Multi-agent

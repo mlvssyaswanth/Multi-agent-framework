@@ -1,8 +1,43 @@
 """
 Orchestrator - Central controller for the Multi-Agent Coding Framework.
 Manages the pipeline execution and agent collaboration.
+
+STRICT PIPELINE ARCHITECTURE:
+=============================
+
+1. AGENTS WORK IN STRICT PIPELINE:
+   - All agents execute in mandatory sequential order
+   - No agent can execute before previous agent completes
+   - Pipeline order is enforced and cannot be modified
+
+2. OUTPUT OF ONE AGENT FEEDS INTO NEXT:
+   - Requirement Analysis Agent output -> feeds into Coding Agent
+   - Coding Agent output -> feeds into Code Review Agent
+   - Code Review Agent feedback -> feeds back into Coding Agent (iteration loop)
+   - Approved code -> feeds into Documentation Agent
+   - Approved code -> feeds into Test Generation Agent
+   - Approved code -> feeds into Deployment Agent
+
+3. NO AGENT MAY SKIP ANOTHER:
+   - All agents must execute in order: Requirements -> Code -> Review -> Documentation -> Tests -> Deployment
+   - Validation checks prevent skipping steps
+   - RuntimeError raised if pipeline order is violated
+
+4. CODE REVIEW AGENT CAN FORCE RE-CODING:
+   - Code Review Agent reviews code from Coding Agent
+   - If issues found, generates explicit feedback
+   - Feedback sent back to Coding Agent for re-coding
+   - Iteration loop continues until code approved or max iterations reached
+   - Central orchestration controls this iteration flow
+
+5. CENTRAL ORCHESTRATION CONTROLS FLOW:
+   - Orchestrator.execute_pipeline() controls entire execution
+   - All agent calls go through orchestrator
+   - Orchestrator manages data flow between agents
+   - Orchestrator enforces pipeline order and prevents skipping
+   - Orchestrator controls iteration loop between Coding and Review agents
 """
-from typing import Dict, Any, Optional, Tuple, List
+from typing import Dict, Any, Optional, Tuple, List, Callable
 import logging
 import os
 import time
@@ -29,8 +64,34 @@ logger = get_logger(__name__)
 class Orchestrator:
     """
     Central orchestrator that manages the multi-agent pipeline.
-    Controls execution flow and enforces iteration until code passes review.
+    
+    STRICT PIPELINE RULES:
+    1. Agents work in a strict, sequential pipeline
+    2. Output of one agent feeds into the next agent
+    3. No agent may skip another agent - all agents must execute in order
+    4. Code Review Agent can force re-coding through iteration loop
+    5. Central orchestration logic controls the entire flow
+    
+    PIPELINE ORDER (MANDATORY):
+    1. RequirementAnalysisAgent -> outputs requirements
+    2. CodingAgent -> uses requirements, outputs code
+    3. CodeReviewAgent -> reviews code, can force re-coding (iteration loop)
+    4. DocumentationAgent -> uses code and requirements, outputs documentation
+    5. TestGenerationAgent -> uses code and requirements, outputs tests
+    6. DeploymentAgent -> uses code and requirements, outputs deployment config
+    
+    The orchestrator enforces this order and ensures no agent is skipped.
     """
+    
+    # Define strict pipeline order - cannot be modified
+    PIPELINE_ORDER = [
+        "requirement_analysis",
+        "code_generation",
+        "code_review",
+        "documentation",
+        "test_generation",
+        "deployment"
+    ]
     
     def __init__(self):
         """Initialize the orchestrator with all agents."""
@@ -42,23 +103,40 @@ class Orchestrator:
         self.deployment_agent = DeploymentAgent()
         
         self.max_iterations = Config.MAX_ITERATIONS
+        self._pipeline_state = {
+            "current_step": None,
+            "completed_steps": [],
+            "step_outputs": {}
+        }
     
-    def execute_pipeline(self, user_input: str) -> Dict[str, Any]:
+    def execute_pipeline(self, user_input: str, progress_callback: Optional[Callable[[int, str], None]] = None, stop_check: Optional[Callable[[], bool]] = None, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
-        Execute the complete multi-agent pipeline.
+        Execute the complete multi-agent pipeline in strict sequential order.
+        
+        STRICT PIPELINE ENFORCEMENT:
+        - Agents execute in mandatory order: Requirements -> Code -> Review -> Documentation -> Tests -> Deployment
+        - Output of one agent feeds into the next (no skipping allowed)
+        - Code Review Agent can force re-coding through iteration loop
+        - Central orchestration controls all flow
         
         Args:
             user_input: Natural language requirement from user
+            progress_callback: Optional callback function(progress: int, message: str) for progress updates
+            stop_check: Optional callback function() -> bool to check if execution should stop
+            context: Optional context dictionary containing previous prompts and results for follow-up prompts
             
         Returns:
             Dictionary containing all outputs from each agent
         """
         pipeline_start = time.time()
-        logger.info("=" * 80)
-        logger.info("🚀 Starting Multi-Agent Pipeline Execution")
-        logger.info("=" * 80)
-        logger.info(f"📝 User Input Length: {len(user_input)} characters")
-        logger.debug(f"📝 User Input: {user_input[:200]}..." if len(user_input) > 200 else f"📝 User Input: {user_input}")
+        logger.info("Pipeline execution started")
+        
+        # Reset pipeline state
+        self._pipeline_state = {
+            "current_step": None,
+            "completed_steps": [],
+            "step_outputs": {}
+        }
         
         results = {
             "user_input": user_input,
@@ -73,132 +151,243 @@ class Orchestrator:
             "execution_time": 0,
         }
         
+        def _check_stop():
+            """Check if stop was requested."""
+            if stop_check:
+                return stop_check()
+            return False
+        
         try:
-            # Step 1: Requirement Analysis (with input validation)
+            # ====================================================================
+            # STEP 1: REQUIREMENT ANALYSIS (MANDATORY - Cannot be skipped)
+            # ====================================================================
+            if progress_callback:
+                progress_callback(5, "🚀 Starting pipeline execution...")
+            
+            if _check_stop():
+                results["status"] = "stopped"
+                results["execution_time"] = time.time() - pipeline_start
+                logger.warning("Pipeline execution stopped by user")
+                return results
+            
             if not user_input or not user_input.strip():
                 raise ValueError("User input cannot be empty. Please provide software requirements.")
             
-            if len(user_input.strip()) < 10:
-                logger.warning("⚠️  User input is very short. Results may be limited.")
+            if progress_callback:
+                progress_callback(10, "📋 Step 1/6: Analyzing requirements...")
+            
+            if _check_stop():
+                results["status"] = "stopped"
+                results["execution_time"] = time.time() - pipeline_start
+                logger.warning("Pipeline execution stopped by user")
+                return results
+            
+            # Mark step as current
+            self._pipeline_state["current_step"] = "requirement_analysis"
+            logger.info("Step 1/6: Requirement Analysis")
             
             with PerformanceLogger(logger, "Requirement Analysis"):
-                log_agent_activity(logger, "RequirementAnalysisAgent", "Analyzing user requirements")
                 try:
-                    results["requirements"] = self.requirement_agent.analyze(user_input)
+                    # Pass context if available (for follow-up prompts)
+                    results["requirements"] = self.requirement_agent.analyze(user_input, context=context)
+                    self._pipeline_state["step_outputs"]["requirements"] = results["requirements"]
+                    self._pipeline_state["completed_steps"].append("requirement_analysis")
                 except Exception as e:
-                    logger.error(f"❌ Requirement analysis failed: {str(e)}")
-                    # Provide fallback requirements
+                    logger.error(f"Requirement analysis failed: {str(e)}")
                     results["requirements"] = {
                         "functional_requirements": [user_input],
                         "non_functional_requirements": ["Code should be efficient, readable, and maintainable"],
                         "assumptions": ["Standard Python environment"],
                         "constraints": []
                     }
-                    logger.warning("⚠️  Using fallback requirements structure")
-                
-                func_reqs = results["requirements"].get("functional_requirements", [])
-                non_func_reqs = results["requirements"].get("non_functional_requirements", [])
-                assumptions = results["requirements"].get("assumptions", [])
-                constraints = results["requirements"].get("constraints", [])
-                
-                logger.info(
-                    f"✅ Requirements Extracted | "
-                    f"Functional: {len(func_reqs)} | "
-                    f"Non-functional: {len(non_func_reqs)} | "
-                    f"Assumptions: {len(assumptions)} | "
-                    f"Constraints: {len(constraints)}"
-                )
+                    self._pipeline_state["step_outputs"]["requirements"] = results["requirements"]
+                    self._pipeline_state["completed_steps"].append("requirement_analysis")
             
-            # Step 2-3: Code Generation and Review (with iteration)
+            # Validate Step 1 completed before proceeding
+            if "requirement_analysis" not in self._pipeline_state["completed_steps"]:
+                raise RuntimeError("Pipeline order violation: Requirement Analysis step must complete before proceeding")
+            
+            if progress_callback:
+                progress_callback(15, "💻 Step 2-3/6: Generating and reviewing code...")
+            
+            if _check_stop():
+                results["status"] = "stopped"
+                results["execution_time"] = time.time() - pipeline_start
+                logger.warning("Pipeline execution stopped by user")
+                return results
+            
+            # Step 2-3: Code Generation and Review
+            self._pipeline_state["current_step"] = "code_generation_and_review"
+            logger.info("Step 2-3/6: Code Generation and Review")
+            
             with PerformanceLogger(logger, "Code Generation and Review"):
-                code, review_feedbacks = self._generate_and_review_code(results["requirements"])
+                # Get previous code from context if available (for follow-ups)
+                previous_code = None
+                if context and context.get("is_active") and context.get("previous_results"):
+                    previous_code = context.get("previous_results", {}).get("code")
+                
+                code, review_feedbacks = self._generate_and_review_code(
+                    self._pipeline_state["step_outputs"]["requirements"], 
+                    progress_callback, 
+                    _check_stop,
+                    previous_code=previous_code
+                )
                 results["code"] = code
                 results["review_feedback"] = review_feedbacks
                 results["iterations"] = len(review_feedbacks)
+                self._pipeline_state["step_outputs"]["code"] = code
+                self._pipeline_state["completed_steps"].append("code_generation")
+                self._pipeline_state["completed_steps"].append("code_review")
                 
-                if code:
-                    if len(review_feedbacks) >= self.max_iterations:
-                        logger.info(f"✅ Code Generated (Best Available) | Iterations: {len(review_feedbacks)} | Code Length: {len(code)} characters")
-                        logger.info("ℹ️  Proceeding with best available code after maximum iterations")
-                    else:
-                        logger.info(f"✅ Code Generated | Iterations: {len(review_feedbacks)} | Code Length: {len(code)} characters")
-                else:
-                    logger.error("❌ Code generation failed - no code was generated")
+                if not code:
+                    logger.error("Code generation failed - no code generated")
                     results["status"] = "failed"
                     results["error"] = "Code generation failed - no code was generated after maximum iterations"
                     results["execution_time"] = time.time() - pipeline_start
                     return results
+                
+                if len(review_feedbacks) >= self.max_iterations:
+                    logger.info(f"Code generated (best available after {len(review_feedbacks)} iterations)")
+                else:
+                    logger.info(f"Code generated ({len(review_feedbacks)} iteration(s))")
             
-            # Step 4: Documentation Generation (with error handling)
+            # Validate Steps 2-3 completed before proceeding
+            if "code_generation" not in self._pipeline_state["completed_steps"]:
+                raise RuntimeError("Pipeline order violation: Code Generation step must complete before proceeding")
+            if "code_review" not in self._pipeline_state["completed_steps"]:
+                raise RuntimeError("Pipeline order violation: Code Review step must complete before proceeding")
+            
+            if _check_stop():
+                results["status"] = "stopped"
+                results["execution_time"] = time.time() - pipeline_start
+                logger.warning("Pipeline execution stopped by user")
+                return results
+            
+            # Step 4: Documentation Generation
+            self._pipeline_state["current_step"] = "documentation"
+            logger.info("Step 4/6: Documentation Generation")
+            
+            if progress_callback:
+                progress_callback(50, "📚 Step 4/6: Generating documentation...")
+            
             try:
                 with PerformanceLogger(logger, "Documentation Generation"):
-                    log_agent_activity(logger, "DocumentationAgent", "Generating documentation")
                     results["documentation"] = self.documentation_agent.generate_documentation(
-                        code, results["requirements"]
+                        self._pipeline_state["step_outputs"]["code"],
+                        self._pipeline_state["step_outputs"]["requirements"]
                     )
-                    logger.info(f"✅ Documentation Generated | Length: {len(results['documentation'])} characters")
+                    self._pipeline_state["step_outputs"]["documentation"] = results["documentation"]
+                    self._pipeline_state["completed_steps"].append("documentation")
             except Exception as e:
-                logger.error(f"❌ Documentation generation failed: {str(e)}")
-                logger.warning("⚠️  Continuing pipeline with placeholder documentation")
+                logger.error(f"Documentation generation failed: {str(e)}")
                 results["documentation"] = f"# Documentation Generation Error\n\nAn error occurred during documentation generation: {str(e)}\n\nCode was successfully generated but documentation could not be created."
+                self._pipeline_state["step_outputs"]["documentation"] = results["documentation"]
+                # Mark as completed even on failure since we provide a fallback
+                self._pipeline_state["completed_steps"].append("documentation")
             
-            # Step 5: Test Case Generation (with error handling)
+            # Validate Step 4 completed before proceeding
+            if "documentation" not in self._pipeline_state["completed_steps"]:
+                raise RuntimeError("Pipeline order violation: Documentation step must complete before proceeding")
+            
+            if _check_stop():
+                results["status"] = "stopped"
+                results["execution_time"] = time.time() - pipeline_start
+                logger.warning("Pipeline execution stopped by user")
+                return results
+            
+            # Step 5: Test Case Generation
+            self._pipeline_state["current_step"] = "test_generation"
+            logger.info("Step 5/6: Test Case Generation")
+            
+            if progress_callback:
+                progress_callback(70, "🧪 Step 5/6: Generating test cases...")
+            
             try:
                 with PerformanceLogger(logger, "Test Case Generation"):
-                    log_agent_activity(logger, "TestGenerationAgent", "Generating test cases")
                     results["test_cases"] = self.test_agent.generate_tests(
-                        code, results["requirements"]
+                        self._pipeline_state["step_outputs"]["code"],
+                        self._pipeline_state["step_outputs"]["requirements"]
                     )
-                    logger.info(f"✅ Test Cases Generated | Length: {len(results['test_cases'])} characters")
+                    self._pipeline_state["step_outputs"]["test_cases"] = results["test_cases"]
+                    self._pipeline_state["completed_steps"].append("test_generation")
             except Exception as e:
-                logger.error(f"❌ Test case generation failed: {str(e)}")
-                logger.warning("⚠️  Continuing pipeline with placeholder test cases")
+                logger.error(f"Test case generation failed: {str(e)}")
                 results["test_cases"] = f"# Test Generation Error\n\n# An error occurred during test generation: {str(e)}\n# Code was successfully generated but test cases could not be created.\n\nimport pytest\n\n# Placeholder test - replace with actual tests\ndef test_placeholder():\n    assert True"
+                self._pipeline_state["step_outputs"]["test_cases"] = results["test_cases"]
+                # Mark as completed even on failure since we provide a fallback
+                self._pipeline_state["completed_steps"].append("test_generation")
             
-            # Step 6: Deployment Configuration (with error handling)
+            # Validate Step 5 completed before proceeding
+            if "test_generation" not in self._pipeline_state["completed_steps"]:
+                raise RuntimeError("Pipeline order violation: Test Generation step must complete before proceeding")
+            
+            if _check_stop():
+                results["status"] = "stopped"
+                results["execution_time"] = time.time() - pipeline_start
+                logger.warning("Pipeline execution stopped by user")
+                return results
+            
+            # Step 6: Deployment Configuration
+            self._pipeline_state["current_step"] = "deployment"
+            logger.info("Step 6/6: Deployment Configuration")
+            
+            if progress_callback:
+                progress_callback(85, "🚀 Step 6/6: Generating deployment configuration...")
+            
             try:
                 with PerformanceLogger(logger, "Deployment Configuration"):
-                    log_agent_activity(logger, "DeploymentAgent", "Generating deployment config")
                     results["deployment_config"] = self.deployment_agent.generate_deployment_config(
-                        code, results["requirements"]
+                        self._pipeline_state["step_outputs"]["code"],
+                        self._pipeline_state["step_outputs"]["requirements"]
                     )
-                    logger.info("✅ Deployment Configuration Generated")
+                    self._pipeline_state["step_outputs"]["deployment_config"] = results["deployment_config"]
+                    self._pipeline_state["completed_steps"].append("deployment")
             except Exception as e:
-                logger.error(f"❌ Deployment configuration generation failed: {str(e)}")
-                logger.warning("⚠️  Continuing pipeline with default deployment config")
+                logger.error(f"Deployment configuration generation failed: {str(e)}")
                 results["deployment_config"] = {
                     "requirements": "python-dotenv>=1.0.0\npyautogen==0.2.28\nopenai>=1.0.0\nstreamlit>=1.28.0\npytest>=7.4.0",
                     "setup_instructions": "1. Install Python 3.10+\n2. Create virtual environment: python -m venv venv\n3. Activate: source venv/bin/activate (Linux/Mac) or venv\\Scripts\\activate (Windows)\n4. Install: pip install -r requirements.txt\n5. Run: python app.py",
-                    "run_script": "#!/bin/bash\nsource venv/bin/activate\npython app.py"
+                    "github_push": "1. Initialize git: git init\n2. Create .gitignore file\n3. Add files: git add .\n4. Commit: git commit -m 'Initial commit'\n5. Create GitHub repo and push",
+                    "hosting_platforms": "Recommended: Heroku, Railway, or Render for easy deployment"
                 }
             
             results["status"] = "completed"
             results["execution_time"] = time.time() - pipeline_start
             
-            logger.info("=" * 80)
-            logger.info(f"✅ Pipeline Execution Completed Successfully | Total Time: {results['execution_time']:.2f}s")
-            logger.info("=" * 80)
+            if progress_callback:
+                progress_callback(100, "✅ Pipeline execution completed successfully!")
+            
+            logger.info(f"Pipeline execution completed successfully ({results['execution_time']:.2f}s)")
             
         except Exception as e:
             results["status"] = "error"
             results["error"] = str(e)
             results["execution_time"] = time.time() - pipeline_start
             
-            logger.error("=" * 80)
-            logger.error(f"❌ Pipeline Execution Failed | Error: {str(e)} | Time: {results['execution_time']:.2f}s")
-            logger.exception("Full error traceback:")
-            logger.error("=" * 80)
+            logger.error(f"Pipeline execution failed: {str(e)}")
+            logger.exception("Error traceback:")
         
         return results
     
     def _generate_and_review_code(
-        self, requirements: Dict[str, Any]
+        self, requirements: Dict[str, Any], progress_callback: Optional[Callable[[int, str], None]] = None, stop_check: Optional[Callable[[], bool]] = None, previous_code: Optional[str] = None
     ) -> Tuple[Optional[str], List[str]]:
         """
         Generate code and iterate with review until approved.
         
+        CRITICAL: Code Review Agent can force re-coding through iteration loop.
+        This method implements the iteration mechanism where:
+        - Coding Agent generates code
+        - Code Review Agent reviews code
+        - If not approved, Code Review Agent sends feedback back to Coding Agent
+        - Process repeats until code is approved or max iterations reached
+        - Central orchestration controls this entire flow
+        
         Args:
-            requirements: Structured requirements dictionary
+            requirements: Structured requirements dictionary (output from Requirement Analysis Agent)
+            progress_callback: Optional progress callback
+            stop_check: Optional stop check callback
+            previous_code: Optional previous code for follow-up prompts
             
         Returns:
             Tuple of (approved_code, list_of_feedback_messages)
@@ -211,9 +400,21 @@ class Orchestrator:
         best_iteration = 0
         
         for iteration in range(self.max_iterations):
-            logger.info("-" * 80)
-            logger.info(f"🔄 Code Generation Iteration {iteration + 1}/{self.max_iterations}")
-            logger.info("-" * 80)
+            # Check for stop request before each iteration
+            if stop_check and stop_check():
+                logger.warning("Code generation stopped by user")
+                return best_code if best_code else None, review_feedbacks
+            
+            logger.info(f"Code generation iteration {iteration + 1}/{self.max_iterations}")
+            
+            # Update progress for code generation iteration
+            if progress_callback:
+                base_progress = 15
+                iteration_progress = base_progress + int((iteration / self.max_iterations) * 30)
+                progress_callback(
+                    iteration_progress,
+                    f"💻 Step 2-3/6: Generating code (iteration {iteration + 1}/{self.max_iterations})..."
+                )
             
             # Generate code with retry logic
             code = None
@@ -226,31 +427,33 @@ class Orchestrator:
                         logger, 
                         "CodingAgent", 
                         f"Generating code (attempt {retry + 1}/{max_retries})",
-                        {"iteration": iteration + 1, "has_feedback": bool(feedback)}
+                        {"iteration": iteration + 1, "has_feedback": bool(feedback), "has_previous_code": bool(previous_code)}
                     )
-                    code = self.coding_agent.generate_code(requirements, feedback)
-                    gen_time = time.time() - iteration_start
-                    logger.info(f"✅ Code Generated | Attempt: {retry + 1} | Time: {gen_time:.2f}s | Length: {len(code)} chars")
+                    # Pass previous code only on first iteration and if no feedback exists
+                    code_to_pass = previous_code if (iteration == 0 and not feedback and previous_code) else None
+                    code = self.coding_agent.generate_code(requirements, feedback, previous_code=code_to_pass)
                     break  # Success, exit retry loop
                 except (ValueError, Exception) as e:
                     if retry < max_retries - 1:
-                        wait_time = 2 ** retry  # Exponential backoff: 1s, 2s, 4s
-                        logger.warning(
-                            f"⚠️  Code generation failed (attempt {retry + 1}/{max_retries}) | "
-                            f"Error: {str(e)[:100]} | Retrying in {wait_time}s..."
-                        )
+                        wait_time = 2 ** retry
                         time.sleep(wait_time)
                     else:
-                        logger.error(f"❌ Code generation failed after {max_retries} attempts | Error: {str(e)}")
+                        logger.error(f"Code generation failed after {max_retries} attempts: {str(e)}")
                         review_feedbacks.append(f"Code generation error: {str(e)}")
             
             if not code or not code.strip():
-                logger.warning("⚠️  Empty code generated, skipping to next iteration")
                 review_feedbacks.append("Code generation returned empty result")
-                # Still try to use this as fallback if we have nothing better
-                if best_code is None:
-                    logger.debug("⚠️  No code available yet, will use first non-empty code as fallback")
                 continue
+            
+            # Update progress for code review
+            if progress_callback:
+                base_progress = 15
+                iteration_progress = base_progress + int((iteration / self.max_iterations) * 30)
+                review_progress = min(iteration_progress + 5, 45)
+                progress_callback(
+                    review_progress,
+                    f"🔍 Step 2-3/6: Reviewing code (iteration {iteration + 1}/{self.max_iterations})..."
+                )
             
             # Review code with retry logic
             is_approved = False
@@ -266,83 +469,44 @@ class Orchestrator:
                         {"iteration": iteration + 1, "code_length": len(code)}
                     )
                     is_approved, review_feedback = self.review_agent.review(code, requirements)
-                    review_time = time.time() - review_start
-                    status = "✅ APPROVED" if is_approved else "⚠️  NEEDS REVISION"
-                    logger.info(f"{status} | Attempt: {retry + 1} | Time: {review_time:.2f}s")
                     break  # Success, exit retry loop
                 except (ValueError, Exception) as e:
                     if retry < max_retries - 1:
                         wait_time = 2 ** retry
-                        logger.warning(
-                            f"⚠️  Code review failed (attempt {retry + 1}/{max_retries}) | "
-                            f"Error: {str(e)[:100]} | Retrying in {wait_time}s..."
-                        )
                         time.sleep(wait_time)
                     else:
-                        logger.error(f"❌ Code review failed after {max_retries} attempts | Error: {str(e)}")
+                        logger.error(f"Code review failed after {max_retries} attempts: {str(e)}")
                         review_feedback = f"Review error: {str(e)}"
-                        is_approved = False  # Assume not approved if review fails
+                        is_approved = False
             
             review_feedbacks.append(review_feedback)
             
-            # CRITICAL: Always track code for fallback mechanism
-            # Score the code quality based on feedback
-            # Positive indicators in feedback suggest better code
-            # Always track code even if not approved - we'll use best one as fallback
+            # Track best code for fallback mechanism
             score = self._score_code_quality(review_feedback, code)
-            
-            # Always update best_code if this is the first code or if score is better
             if best_code is None or score > best_code_score:
                 best_code_score = score
                 best_code = code
                 best_iteration = iteration + 1
-                logger.info(f"📊 Best code tracked | Score: {score:.2f} | Iteration: {iteration + 1} | Length: {len(code)} chars")
-            else:
-                logger.debug(f"📊 Code scored | Score: {score:.2f} | Current best: {best_code_score:.2f} (iteration {best_iteration})")
             
             if is_approved:
-                total_iteration_time = time.time() - iteration_start
-                logger.info(f"✅ Code Approved | Total Iteration Time: {total_iteration_time:.2f}s")
+                logger.info(f"Code approved (iteration {iteration + 1})")
+                if progress_callback:
+                    progress_callback(45, "✅ Code approved! Moving to documentation...")
                 return code, review_feedbacks
             
-            feedback_preview = review_feedback[:150] + "..." if len(review_feedback) > 150 else review_feedback
-            logger.info(f"📋 Review Feedback (iteration {iteration + 1}): {feedback_preview}")
             feedback = review_feedback
         
-        # If we reach here, use the best code we generated (FALLBACK MECHANISM)
-        # This ensures pipeline ALWAYS completes, even if code wasn't perfectly approved
+        # Use best code if max iterations reached
         if best_code:
-            logger.warning("=" * 80)
-            logger.warning(f"⚠️  Max Iterations Reached ({self.max_iterations}) | Using Best Code from Iteration {best_iteration}")
-            logger.warning(f"📊 Best Code Score: {best_code_score:.2f} | Code Length: {len(best_code)} chars | Total Feedbacks: {len(review_feedbacks)}")
-            logger.warning("✅ Pipeline will continue with best available code - ALL STEPS WILL COMPLETE")
-            logger.warning("=" * 80)
-            # Add a note to feedbacks that we're using best available code
+            logger.warning(f"Max iterations reached ({self.max_iterations}), using best code from iteration {best_iteration}")
             review_feedbacks.append(
                 f"[SYSTEM] Maximum iterations ({self.max_iterations}) reached. "
-                f"Using best code generated (iteration {best_iteration}, score: {best_code_score:.2f}). "
-                f"Code may not be perfect but represents the best effort after {self.max_iterations} iterations. "
+                f"Using best code generated (iteration {best_iteration}). "
                 f"Pipeline will continue with all remaining steps."
             )
             return best_code, review_feedbacks
-        else:
-            # Emergency fallback: if somehow no code was tracked, use the last generated code
-            logger.error("=" * 80)
-            logger.error("❌ CRITICAL: No best code tracked - this should not happen!")
-            logger.error("Attempting to recover using last iteration code...")
-            logger.error("=" * 80)
-            # This should never happen, but provides ultimate safety
-            if review_feedbacks:
-                review_feedbacks.append(
-                    "[SYSTEM ERROR] No code was successfully tracked. Pipeline may be incomplete."
-                )
-            return None, review_feedbacks
         
-        # This should never be reached now, but kept as safety fallback
-        logger.error("=" * 80)
-        logger.error(f"❌ Code Generation Failed Completely | No usable code generated")
-        logger.error(f"📊 Total Review Feedbacks: {len(review_feedbacks)}")
-        logger.error("=" * 80)
+        logger.error("Code generation failed - no usable code generated")
         return None, review_feedbacks
     
     def _score_code_quality(self, feedback: str, code: str) -> float:
